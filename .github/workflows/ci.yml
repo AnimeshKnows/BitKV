@@ -1,0 +1,89 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-test:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ninja (POSIX)
+        if: runner.os != 'Windows'
+        run: |
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            sudo apt-get update
+            sudo apt-get install -y ninja-build
+          else
+            brew install ninja
+          fi
+
+      - name: Configure (POSIX Release)
+        if: runner.os != 'Windows'
+        run: cmake --preset release-ninja
+
+      - name: Build (POSIX Release)
+        if: runner.os != 'Windows'
+        run: cmake --build --preset release-ninja
+
+      - name: Test (POSIX Release)
+        if: runner.os != 'Windows'
+        run: ctest --preset release-ninja --output-on-failure
+
+      - name: Configure (Windows Release)
+        if: runner.os == 'Windows'
+        run: cmake -S . -B build/release -DCMAKE_BUILD_TYPE=Release -DBITKV_BUILD_TESTS=ON
+
+      - name: Build (Windows Release)
+        if: runner.os == 'Windows'
+        run: cmake --build build/release --config Release
+
+      - name: Test (Windows Release)
+        if: runner.os == 'Windows'
+        run: ctest --test-dir build/release -C Release --output-on-failure
+
+  asan:
+    name: asan (ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ninja
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+
+      - name: Configure
+        run: cmake --preset asan
+
+      - name: Build
+        run: cmake --build --preset asan
+
+      - name: Test
+        run: ctest --preset asan --output-on-failure
+
+  clang-format:
+    name: clang-format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format
+
+      - name: Check formatting
+        run: |
+          find include src tests -type f \( -name '*.hpp' -o -name '*.cpp' \) \
+            -print0 | xargs -0 clang-format --dry-run --Werror
